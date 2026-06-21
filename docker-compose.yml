@@ -1,0 +1,38 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: holding-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    profiles:
+      - local-mongo
+
+  backend:
+    build: ./backend
+    container_name: holding-backend
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env
+    environment:
+      FLASK_ENV: production
+      ALLOW_MONGOMOCK: "false"
+      SEED_DEV_DATA: "false"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:5000
+    container_name: holding-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
