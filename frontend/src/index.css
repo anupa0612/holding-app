@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", "Segoe UI", Roboto, sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(166, 89, 255, 0.16), transparent 26%),
+    radial-gradient(circle at top right, rgba(236, 72, 153, 0.14), transparent 24%),
+    linear-gradient(180deg, #0f1118 0%, #141821 42%, #11131b 100%);
+  color: #e5e7eb;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(59, 130, 246, 0.22);
+}
+
+/* nicer default typography rhythm */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}
+
+/* subtle app background texture */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1200px 600px at 12% -8%, rgba(139, 92, 246, 0.22), transparent 60%),
+    radial-gradient(960px 520px at 100% 0%, rgba(232, 121, 249, 0.16), transparent 55%),
+    radial-gradient(760px 420px at 55% 100%, rgba(124, 58, 237, 0.08), transparent 55%),
+    linear-gradient(180deg, rgba(4, 6, 15, 0.28), rgba(4, 6, 15, 0.04));
+  z-index: 0;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at center, rgba(0,0,0,0.38), transparent 78%);
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* reduce “unstyled input” differences across browsers */
+input,
+button,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+[role="button"],
+a {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
+/* Native select dropdown lists (Windows/Chrome) — keep options readable on dark UI */
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+select option:checked,
+select option:hover {
+  background-color: #334155;
+  color: #ffffff;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.22);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.32);
+  background-clip: content-box;
+}
+
+.dashboard-accent-card {
+  background: linear-gradient(135deg, rgba(107, 67, 255, 0.96), rgba(236, 72, 153, 0.92));
+  box-shadow: 0 18px 40px rgba(168, 85, 247, 0.22);
+}
+
+
+
