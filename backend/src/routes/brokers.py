@@ -9,6 +9,7 @@ from src.broker_seed import ensure_standard_brokers
 from src.db import get_db
 from src.mongo_ids import oid, oid_str
 from src.routes.users import JURISDICTIONS
+from src.utils.recon_cleanup import purge_account_data
 from src.utils.broker_templates import (
     BUILDERS,
     broker_template_keys_map,
@@ -206,6 +207,28 @@ def create_account(broker_id: str):
     res = db["accounts"].insert_one(doc)
     created = db["accounts"].find_one({"_id": res.inserted_id})
     return {"account": _serialize_account(created)}
+
+
+@bp.delete("/<broker_id>/accounts/<account_id>")
+@jwt_required()
+def delete_account(broker_id: str, account_id: str):
+    db = get_db()
+    is_admin, _ = _require_admin(db)
+    if not is_admin:
+        return {"error": "Admin access required"}, 403
+
+    broker_oid = oid(broker_id)
+    account_oid = oid(account_id)
+    broker = db["brokers"].find_one({"_id": broker_oid})
+    if not broker:
+        return {"error": "Broker not found"}, 404
+
+    account = db["accounts"].find_one({"_id": account_oid, "brokerId": broker_oid})
+    if not account:
+        return {"error": "Account not found for this broker"}, 404
+
+    reconciliations_deleted = purge_account_data(db, account_oid, broker_oid)
+    return {"ok": True, "reconciliationsDeleted": reconciliations_deleted}
 
 
 @bp.delete("/<broker_id>")

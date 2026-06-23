@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Upsert standard EU brokers/accounts (idempotent)."""
+"""Upsert standard EU brokers (idempotent). Accounts are created by users — no defaults."""
 
 # Broker display name vs backend template key (common mix-up in the admin UI).
 _CLEAR_STREET_NAME = "Clear Street"
@@ -23,7 +23,6 @@ def _repair_misnamed_clear_street_brokers(db, clear_street_id) -> None:
 
 def ensure_standard_brokers(db) -> None:
     brokers = db["brokers"]
-    accounts = db["accounts"]
 
     caceis = brokers.find_one({"name": "CACEIS"})
     if not caceis:
@@ -44,17 +43,6 @@ def ensure_standard_brokers(db) -> None:
             updates["templateKeys"] = {"position": "caceis_holdings"}
         if updates:
             brokers.update_one({"_id": caceis_id}, {"$set": updates})
-
-    if not accounts.find_one({"brokerId": caceis_id, "name": "Default Account"}):
-        accounts.insert_one(
-            {
-                "brokerId": caceis_id,
-                "name": "Default Account",
-                "number": "0001",
-                "jurisdiction": "EU",
-                "createdBy": None,
-            }
-        )
 
     clear_street = brokers.find_one({"name": _CLEAR_STREET_NAME})
     if not clear_street:
@@ -77,17 +65,6 @@ def ensure_standard_brokers(db) -> None:
                     "templateKey": _CLEAR_STREET_TEMPLATE,
                 }
             },
-        )
-
-    if not accounts.find_one({"brokerId": clear_street_id, "name": "Default Account"}):
-        accounts.insert_one(
-            {
-                "brokerId": clear_street_id,
-                "name": "Default Account",
-                "number": "0002",
-                "jurisdiction": "EU",
-                "createdBy": None,
-            }
         )
 
     _repair_misnamed_clear_street_brokers(db, clear_street_id)
@@ -116,17 +93,6 @@ def ensure_standard_brokers(db) -> None:
             },
         )
 
-    if not accounts.find_one({"brokerId": gtna_id, "name": "Default Account"}):
-        accounts.insert_one(
-            {
-                "brokerId": gtna_id,
-                "name": "Default Account",
-                "number": "0003",
-                "jurisdiction": "EU",
-                "createdBy": None,
-            }
-        )
-
     gtnme_template = "gtnme_holdings"
     gtnme = brokers.find_one({"name": "GTNME"})
     if not gtnme:
@@ -149,15 +115,4 @@ def ensure_standard_brokers(db) -> None:
                     "templateKey": gtnme_template,
                 }
             },
-        )
-
-    if not accounts.find_one({"brokerId": gtnme_id, "name": "Default Account"}):
-        accounts.insert_one(
-            {
-                "brokerId": gtnme_id,
-                "name": "Default Account",
-                "number": "0004",
-                "jurisdiction": "EU",
-                "createdBy": None,
-            }
         )

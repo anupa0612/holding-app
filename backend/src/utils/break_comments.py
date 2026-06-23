@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
-from src.mongo_ids import oid
+from src.mongo_ids import oid, oid_str
 
 BREAK_ROW_KEY_PREFIX = "BREAK|"
 
@@ -66,6 +66,47 @@ def compute_isin_break_differences(break_rows: list[dict]) -> dict[str, float | 
         if not isin or isin in out:
             continue
         out[isin] = normalize_difference(row.get("Difference"))
+    return out
+
+
+def _as_of_date(recon: dict) -> date:
+    for field in ("valueDate", "recDate"):
+        raw = str(recon.get(field) or "").strip()
+        if not raw:
+            continue
+        try:
+            return date.fromisoformat(raw[:10])
+        except ValueError:
+            continue
+    return _now().date()
+
+
+def compute_break_age_days(started_at: datetime | date | None, *, as_of: date | None = None) -> int:
+    if started_at is None:
+        return 0
+    start_day = started_at.date() if isinstance(started_at, datetime) else started_at
+    end_day = as_of or _now().date()
+    return max(0, (end_day - start_day).days)
+
+
+def active_break_ages_for_recon(db, recon: dict) -> dict[str, dict]:
+    """Map BREAK|ISIN row keys to break age metadata for active account breaks."""
+    if not recon.get("accountId"):
+        return {}
+    as_of = _as_of_date(recon)
+    out: dict[str, dict] = {}
+    for doc in db["account_break_comments"].find({**_account_scope_query(recon), "active": True}):
+        isin = str(doc.get("isin") or "").strip()
+        if not isin:
+            continue
+        started = doc.get("breakStartedAt") or doc.get("createdAt") or doc.get("updatedAt")
+        if not started:
+            continue
+        row_key = break_comment_row_key(isin)
+        out[row_key] = {
+            "breakStartedAt": started.isoformat() if hasattr(started, "isoformat") else str(started),
+            "breakAgeDays": compute_break_age_days(started, as_of=as_of),
+        }
     return out
 
 
@@ -226,7 +267,8 @@ def sync_account_break_comments_on_build(db, recon: dict, break_rows: list[dict]
                     "history": history,
                     "clearedAt": _now(),
                     "updatedAt": _now(),
-                }
+                },
+                "$unset": {"breakStartedAt": ""},
             },
         )
 
@@ -238,6 +280,7 @@ def sync_account_break_comments_on_build(db, recon: dict, break_rows: list[dict]
         history = list(doc.get("history") or [])
         active_break = doc.get("break")
         active_comment = doc.get("comment") or ""
+        break_started_at = doc.get("breakStartedAt")
 
         if doc.get("_id"):
             if doc.get("active"):
@@ -247,11 +290,14 @@ def sync_account_break_comments_on_build(db, recon: dict, break_rows: list[dict]
                     )
                     active_break = None
                     active_comment = ""
+                break_started_at = break_started_at or doc.get("createdAt") or _now()
             else:
-                # Break returned after being cleared — start a fresh active comment.
+                # Break returned after being cleared — start a fresh active comment and age.
                 active_break = None
                 active_comment = ""
+                break_started_at = _now()
         else:
+            break_started_at = _now()
             prior = _find_prior_break_comment(db, recon, row_key, exclude_recon_id=recon_oid)
             if prior and (prior.get("break") or prior.get("comment")):
                 prior_recon = db["reconciliations"].find_one({"_id": prior.get("reconciliationId")}) or {}
@@ -304,6 +350,7 @@ def sync_account_break_comments_on_build(db, recon: dict, break_rows: list[dict]
             "break": active_break,
             "comment": active_comment,
             "history": history,
+            "breakStartedAt": break_started_at or _now(),
             "lastReconciliationId": recon_oid,
             "updatedAt": _now(),
         }
@@ -358,6 +405,7 @@ def upsert_account_break_comment(
         "break": break_payload,
         "comment": comment,
         "history": history,
+        "breakStartedAt": existing.get("breakStartedAt") or existing.get("createdAt") or _now(),
         "lastReconciliationId": recon["_id"],
         "updatedAt": _now(),
         "updatedBy": history_item.get("updatedBy"),

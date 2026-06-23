@@ -7,7 +7,7 @@ from src.db import get_db
 from src.mongo_ids import oid, oid_str
 from src.rate_limit import check_rate_limit
 from src.security import verify_password
-from src.routes.users import JURISDICTIONS
+from src.routes.users import PORTAL_JURISDICTIONS
 
 bp = Blueprint("auth", __name__)
 
@@ -21,8 +21,10 @@ def login():
 
     if not email or not password or not jurisdiction:
         return {"error": "Missing email, password, or jurisdiction"}, 400
-    if jurisdiction not in JURISDICTIONS:
-        return {"error": "Invalid jurisdiction"}, 400
+    if jurisdiction == "ALL" or jurisdiction not in PORTAL_JURISDICTIONS:
+        return {
+            "error": "Select a sign-in jurisdiction: EU, US, ME, ASIA, or HK (ALL is not a region)",
+        }, 400
 
     client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
     if not check_rate_limit(f"login:{client_ip}:{email}", max_attempts=8, window_seconds=300):

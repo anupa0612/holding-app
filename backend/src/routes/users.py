@@ -10,7 +10,9 @@ from src.security import hash_password
 bp = Blueprint("users", __name__)
 
 TEAMS = {"Reconciliations", "Operations"}
-JURISDICTIONS = {"ALL", "EU", "US", "ME", "ASIA", "HK"}
+PORTAL_JURISDICTIONS = frozenset({"EU", "US", "ME", "ASIA", "HK"})
+# ALL is a user-access flag (any portal), not a sign-in jurisdiction.
+JURISDICTIONS = PORTAL_JURISDICTIONS | {"ALL"}
 ROLES = {"admin", "user"}
 
 

@@ -18,8 +18,12 @@ from src.utils.recon_rows import (
     isin_summary_counts,
     split_rows_by_difference,
 )
+from src.utils.recon_cleanup import purge_reconciliation
 from src.utils.break_comments import (
+    active_break_ages_for_recon,
+    break_comment_row_key,
     comment_for_export,
+    isin_from_normalized_row,
     is_break_comment_row_key,
     is_latest_reviewed_for_account,
     sync_account_break_comments_on_build,
@@ -357,6 +361,15 @@ def _lookup_maps_for_recons(db, docs: list[dict]) -> tuple[dict, dict, dict]:
     return reviewers, brokers, accounts
 
 
+def _break_count_from_summary(doc: dict) -> int:
+    summary = doc.get("summary") or {}
+    return (
+        int(summary.get("breaks") or 0)
+        + int(summary.get("onlyOur") or 0)
+        + int(summary.get("onlyCp") or 0)
+    )
+
+
 def _serialize_recon(
     doc: dict,
     db=None,
@@ -404,11 +417,15 @@ def _serialize_recon(
         "performerName": _to_username(doc.get("performerName")),
         "reviewerId": oid_str(doc["reviewerId"]) if doc.get("reviewerId") else None,
         "reviewerName": _to_username(reviewer_name) if reviewer_name else None,
+        "brokerId": oid_str(doc["brokerId"]) if doc.get("brokerId") else None,
+        "accountId": oid_str(doc["accountId"]) if doc.get("accountId") else None,
         "brokerName": broker_name,
         "accountName": account_name,
         "declineReason": doc.get("declineReason"),
         "createdAt": doc.get("createdAt").isoformat() if doc.get("createdAt") else None,
         "updatedAt": doc.get("updatedAt").isoformat() if doc.get("updatedAt") else None,
+        "reviewedAt": doc.get("reviewedAt").isoformat() if doc.get("reviewedAt") else None,
+        "breakCount": _break_count_from_summary(doc),
         "ourFileName": (doc.get("ourFile") or {}).get("name"),
         "cpFileName": (doc.get("cpFile") or {}).get("name"),
         "name": (doc.get("name") or "").strip() or None,
@@ -423,9 +440,9 @@ def list_reconciliations():
     scope = (request.args.get("scope") or "").strip().lower()
     limit = int(
         request.args.get("limit")
-        or (100 if scope in {"jurisdiction", "drafts"} else 20)
+        or (100 if scope in {"jurisdiction", "drafts", "today"} else 20)
     )
-    limit = max(1, min(limit, 200 if scope in {"jurisdiction", "drafts"} else 100))
+    limit = max(1, min(limit, 300 if scope in {"jurisdiction", "drafts", "today"} else 100))
 
     db = get_db()
     active = _active_jurisdiction()
@@ -438,6 +455,9 @@ def list_reconciliations():
             "userId": oid(get_jwt_identity()),
             "status": {"$in": _draft_statuses()},
         }
+    elif scope == "today":
+        q = {"recDate": _now().date().isoformat()}
+        q.update(_dashboard_jurisdiction_filter(active))
     elif scope == "jurisdiction":
         q: dict = {"status": "reviewed"}
         q.update(_dashboard_jurisdiction_filter(active))
@@ -460,7 +480,7 @@ def list_reconciliations():
             q["jurisdiction"] = {"$in": [active, "ALL", None]}
 
     # Do not let ?status= override fixed scopes (dashboard / drafts).
-    if scope not in {"jurisdiction", "drafts"}:
+    if scope not in {"jurisdiction", "drafts", "today"}:
         status = (request.args.get("status") or "").strip()
         if status:
             parts = [x.strip() for x in status.split(",") if x.strip()]
@@ -516,6 +536,72 @@ def list_review_queue():
     return {"items": items}
 
 
+def _recon_search_haystack(doc: dict, item: dict) -> str:
+    parts = [
+        item.get("name"),
+        item.get("type"),
+        item.get("brokerName"),
+        item.get("accountName"),
+        item.get("status"),
+        item.get("valueDate"),
+        item.get("recDate"),
+        item.get("performerName"),
+        item.get("reviewerName"),
+        item.get("jurisdiction"),
+        _recon_display_name(
+            doc,
+            broker_name=item.get("brokerName"),
+            account_name=item.get("accountName"),
+        ),
+        item.get("ourFileName"),
+        item.get("cpFileName"),
+    ]
+    return " ".join(str(p) for p in parts if p).lower()
+
+
+@bp.get("/search")
+@jwt_required()
+def search_reconciliations():
+    q_text = (request.args.get("q") or "").strip()
+    if len(q_text) < 2:
+        return {"items": []}
+
+    limit = max(1, min(int(request.args.get("limit") or 20), 50))
+    db = get_db()
+    active = _active_jurisdiction()
+    is_ops = _is_operations(db)
+
+    mongo_q: dict = {"status": "reviewed"}
+    if is_ops:
+        mongo_q.update(_dashboard_jurisdiction_filter(active))
+    elif active != "ALL":
+        mongo_q["jurisdiction"] = {"$in": [active, "ALL", None]}
+
+    docs = list(
+        db["reconciliations"]
+        .find(mongo_q)
+        .sort("reviewedAt", -1)
+        .limit(400)
+    )
+    docs = [
+        d
+        for d in docs
+        if _user_can_access_recon(db, d) and _recon_matches_view_jurisdiction(d, active)
+    ]
+
+    reviewers, brokers, accounts = _lookup_maps_for_recons(db, docs)
+    needle = q_text.lower()
+    matched: list[dict] = []
+    for d in docs:
+        item = _serialize_recon(d, reviewers=reviewers, brokers=brokers, accounts=accounts)
+        if needle in _recon_search_haystack(d, item):
+            matched.append(item)
+            if len(matched) >= limit:
+                break
+
+    return {"items": matched}
+
+
 @bp.get("/<recon_id>")
 @jwt_required()
 def get_reconciliation(recon_id: str):
@@ -524,14 +610,6 @@ def get_reconciliation(recon_id: str):
     if not recon:
         return {"error": "Not found"}, 404
     return {"reconciliation": _serialize_recon(recon, db=db)}
-
-
-def _delete_recon_upload_dir(recon_id: str) -> None:
-    from flask import current_app
-
-    recon_dir = os.path.join(current_app.config["UPLOAD_ROOT"], recon_id)
-    if os.path.isdir(recon_dir):
-        shutil.rmtree(recon_dir, ignore_errors=True)
 
 
 @bp.delete("/<recon_id>")
@@ -550,10 +628,7 @@ def delete_reconciliation(recon_id: str):
     if recon.get("status") not in _deletable_draft_statuses():
         return {"error": "Only draft reconciliations that have not been submitted can be deleted"}, 400
 
-    db["comments"].delete_many({"reconciliationId": recon_oid})
-    db["reconciliation_results"].delete_many({"reconciliationId": recon_oid})
-    db["reconciliations"].delete_one({"_id": recon_oid})
-    _delete_recon_upload_dir(recon_id)
+    purge_reconciliation(db, recon_oid)
     return {"ok": True}
 
 
@@ -590,6 +665,9 @@ def create_reconciliation():
     broker = db["brokers"].find_one({"_id": oid(broker_id)})
     if not broker:
         return {"error": "Broker not found"}, 404
+    account = db["accounts"].find_one({"_id": oid(account_id), "brokerId": oid(broker_id)})
+    if not account:
+        return {"error": "Account not found for this broker. Create an account before starting a reconciliation."}, 404
     if not resolve_broker_template_key(broker, recon_type):
         return {"error": template_unavailable_message(broker, recon_type)}, 400
     active = _active_jurisdiction()
@@ -1088,12 +1166,17 @@ def export_xlsx(recon_id: str):
     for c in db["comments"].find({"reconciliationId": oid(recon_id)}):
         comments_by_rowkey[c.get("rowKey")] = c
 
+    break_ages = active_break_ages_for_recon(db, recon)
+
     def decorate(row: dict) -> dict:
         c = comment_for_export(comments_by_rowkey, row)
         br = c.get("break") or {}
         row = dict(row)
         row["Break Type"] = br.get("breakType") or ""
         row["Comments"] = (br.get("description") or c.get("comment") or "").strip()
+        isin = isin_from_normalized_row(row)
+        age_info = break_ages.get(break_comment_row_key(isin)) if isin else None
+        row["Age (days)"] = age_info.get("breakAgeDays") if age_info else ""
         return row
 
     matched_rows = [decorate(r) for r in matched_rows]
@@ -1108,6 +1191,7 @@ def export_xlsx(recon_id: str):
         "Broker ISIN",
         "Broker Settled Quantity",
         "Difference",
+        "Age (days)",
         "Break Type",
         "Comments",
     ]
@@ -1462,6 +1546,9 @@ def results(recon_id: str):
                 "comment": c.get("comment") or "",
                 "history": [_serialize_comment_history_item(x) for x in normalized_history],
             }
+
+    for row_key, age_info in active_break_ages_for_recon(db, recon).items():
+        comments[row_key] = {**(comments.get(row_key) or {}), **age_info}
 
     payload: dict = {
         "summary": {
