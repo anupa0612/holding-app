@@ -18,6 +18,12 @@ export function formatReconDisplayName(r: ReconLabelSource): string {
   return defaultReconDisplayName(r)
 }
 
+export function reconOpenPath(r: Pick<ReconciliationListItem, 'id' | 'status'>): string {
+  if (r.status === 'draft') return `/reconciliations/${r.id}/upload`
+  if (r.status === 'uploaded') return `/reconciliations/${r.id}/build`
+  return `/reconciliations/${r.id}/results`
+}
+
 export function reconDownloadBasename(r: ReconLabelSource, id: string): string {
   const label = formatReconDisplayName(r)
   const safe = label

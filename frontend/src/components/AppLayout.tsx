@@ -2,7 +2,8 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearAccessToken, getJurisdiction } from '../lib/auth'
 import { clearMeCache, listNotifications, markNotificationsRead, me, type NotificationItem } from '../lib/api'
 import { Button } from './Button'
-import { Bell, LayoutDashboard, PlusSquare, Search, Users, ClipboardCheck, Archive, Building2, FilePen } from 'lucide-react'
+import { Bell, LayoutDashboard, PlusSquare, Users, ClipboardCheck, Archive, Building2, FilePen } from 'lucide-react'
+import { ReconSearchBar } from './ReconSearchBar'
 import { useEffect, useState } from 'react'
 
 function NavItem({
@@ -249,10 +250,7 @@ export function AppLayout() {
                         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-shellSub">Logged in as</div>
                         <div className="mt-1 text-sm font-semibold text-slate-100">{displayName || '—'}</div>
                       </div>
-                      <div className="flex items-center gap-2 rounded-2xl border border-white/6 bg-black/20 px-4 py-2.5 text-shellSub min-w-[280px]">
-                        <Search size={16} className="text-violet-300" />
-                        <span className="text-sm">Search workflows, files, results</span>
-                      </div>
+                      <ReconSearchBar />
                       <button
                         type="button"
                         className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-white/6 bg-black/20 text-violet-300"
@@ -281,7 +279,8 @@ export function AppLayout() {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 md:hidden">
+              <div className="flex flex-1 items-center gap-2 md:hidden">
+                <ReconSearchBar className="min-w-0 flex-1" />
                 <Button variant="secondary" onClick={() => nav('/reconciliations/new')}>
                   New
                 </Button>

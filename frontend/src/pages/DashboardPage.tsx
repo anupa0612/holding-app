@@ -14,19 +14,31 @@ import { KpiCard } from '../components/KpiCard'
 
 import { PageHeader } from '../components/PageHeader'
 
-import { ArrowRightLeft, Landmark, Layers, Clock, Eye, ArrowUpRight } from 'lucide-react'
+import { ArrowRightLeft, Landmark, Layers, Clock, Eye } from 'lucide-react'
 
 import {
+
+  listAccounts,
+
+  listBrokers,
 
   listDashboardReviewed,
 
   listRegisteredReconTypes,
+
+  listTodayReconciliations,
 
   me,
 
   reconDashboardCommentRowKey,
 
   saveReconComment,
+
+  type Account,
+
+  type Broker,
+
+  type ReconStatus,
 
   type ReconType,
 
@@ -41,6 +53,27 @@ import { formatReconDisplayName } from '../lib/recon'
 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
+
+
+function reconStatusBadge(status: ReconStatus | 'none') {
+  if (status === 'none') return <Badge variant="neutral">Not started</Badge>
+  if (status === 'reviewed') return <Badge variant="success">Reviewed</Badge>
+  if (status === 'submitted') return <Badge variant="info">Submitted</Badge>
+  if (status === 'declined') return <Badge variant="danger">Declined</Badge>
+  if (status === 'completed') return <Badge variant="warn">Built</Badge>
+  if (status === 'uploaded') return <Badge variant="info">Uploaded</Badge>
+  return <Badge variant="neutral">{status}</Badge>
+}
+
+function reconTargetPath(recon: ReconciliationListItem) {
+  if (recon.status === 'draft' || recon.status === 'uploaded') {
+    return `/reconciliations/${recon.id}/upload`
+  }
+  if (recon.status === 'completed' || recon.status === 'declined') {
+    return `/reconciliations/${recon.id}/build`
+  }
+  return `/reconciliations/${recon.id}/results`
+}
 
 
 function ReconCard({
@@ -137,6 +170,12 @@ export function DashboardPage() {
 
   const [chartItems, setChartItems] = useState<ReconciliationListItem[]>([])
 
+  const [brokers, setBrokers] = useState<Broker[]>([])
+
+  const [accountsByBroker, setAccountsByBroker] = useState<Record<string, Account[]>>({})
+
+  const [todayRecs, setTodayRecs] = useState<ReconciliationListItem[]>([])
+
   const [error, setError] = useState<string | null>(null)
 
   const [registeredTypes, setRegisteredTypes] = useState<ReconType[]>([])
@@ -164,13 +203,17 @@ export function DashboardPage() {
 
     try {
 
-      const [res, chartRes, typesRes] = await Promise.all([
+      const [res, chartRes, typesRes, brokersRes, todayRes] = await Promise.all([
 
         listDashboardReviewed(100),
 
         listDashboardReviewed(200, 7),
 
         listRegisteredReconTypes(),
+
+        listBrokers(),
+
+        listTodayReconciliations(),
 
       ])
 
@@ -182,6 +225,20 @@ export function DashboardPage() {
       setChartItems(reviewedOnly(chartRes.items))
 
       setRegisteredTypes(typesRes.items.map((x) => x.type))
+
+      setBrokers(brokersRes.items)
+
+      setTodayRecs(todayRes.items)
+
+      const accountResults = await Promise.all(brokersRes.items.map((b) => listAccounts(b.id)))
+
+      const nextAccounts: Record<string, Account[]> = {}
+
+      brokersRes.items.forEach((b, i) => {
+        nextAccounts[b.id] = accountResults[i]?.items ?? []
+      })
+
+      setAccountsByBroker(nextAccounts)
 
       const drafts: Record<string, string> = {}
 
@@ -292,7 +349,7 @@ export function DashboardPage() {
 
     for (const it of chartItems) {
 
-      const when = it.updatedAt || it.createdAt
+      const when = it.reviewedAt || it.updatedAt || it.createdAt
 
       if (!when) continue
 
@@ -300,13 +357,61 @@ export function DashboardPage() {
 
       const row = days.find((x) => x.key === key)
 
-      if (row) row.count += 1
+      if (row) row.count += it.breakCount ?? 0
 
     }
 
     return days
 
   }, [chartItems])
+
+
+
+  const brokerOverview = useMemo(() => {
+    const recByAccount = new Map<string, ReconciliationListItem>()
+    for (const r of todayRecs) {
+      if (!r.accountId) continue
+      const existing = recByAccount.get(r.accountId)
+      if (!existing || (r.updatedAt || '') > (existing.updatedAt || '')) {
+        recByAccount.set(r.accountId, r)
+      }
+    }
+
+    const rows: {
+      brokerId: string
+      brokerName: string
+      accountId: string
+      accountName: string
+      accountNumber?: string | null
+      recon: ReconciliationListItem | null
+    }[] = []
+
+    for (const broker of brokers) {
+      const accounts = accountsByBroker[broker.id] ?? []
+      if (accounts.length === 0) {
+        rows.push({
+          brokerId: broker.id,
+          brokerName: broker.name,
+          accountId: '',
+          accountName: '—',
+          recon: null,
+        })
+        continue
+      }
+      for (const account of accounts) {
+        rows.push({
+          brokerId: broker.id,
+          brokerName: broker.name,
+          accountId: account.id,
+          accountName: account.name,
+          accountNumber: account.number,
+          recon: recByAccount.get(account.id) ?? null,
+        })
+      }
+    }
+
+    return rows
+  }, [brokers, accountsByBroker, todayRecs])
 
 
 
@@ -477,13 +582,13 @@ export function DashboardPage() {
 
 
 
-      <div className={isOperations ? 'grid gap-4' : 'grid gap-4 md:grid-cols-[1.5fr_1fr]'}>
+      <div className="grid gap-4 md:grid-cols-[1.5fr_1fr]">
 
         <Card
 
           title="Activity (last 7 days)"
 
-          subtitle="Reviewed reconciliations per day in your jurisdiction."
+          subtitle="Total breaks in reviewed reconciliations, day by day (all brokers)."
 
           right={<Badge variant="info">Auto</Badge>}
 
@@ -529,9 +634,11 @@ export function DashboardPage() {
 
                   labelStyle={{ fontWeight: 700, color: '#E5E7EB' }}
 
+                  formatter={(value: number) => [`${value}`, 'Breaks']}
+
                 />
 
-                <Area type="monotone" dataKey="count" stroke="#A855F7" fill="url(#fillBlue)" strokeWidth={2.5} />
+                <Area type="monotone" dataKey="count" name="Breaks" stroke="#A855F7" fill="url(#fillBlue)" strokeWidth={2.5} />
 
               </AreaChart>
 
@@ -543,125 +650,60 @@ export function DashboardPage() {
 
 
 
-        {!isOperations ? (
-        <Card title="Quick actions" subtitle="Start fast with the common workflows.">
-
-          <div className="grid gap-2">
-
-            <button
-
-              type="button"
-
-              disabled={!typeEnabled('trade')}
-
-              className={[
-
-                'rounded-[22px] border px-4 py-4 text-left transition duration-200',
-
-                typeEnabled('trade')
-
-                  ? 'border-white/6 bg-[linear-gradient(180deg,rgba(47,30,80,0.95),rgba(148,51,234,0.92))] shadow-[0_16px_30px_rgba(124,58,237,0.18)] hover:-translate-y-0.5 hover:brightness-110'
-
-                  : 'cursor-not-allowed border-white/4 bg-black/20 opacity-60',
-
-              ].join(' ')}
-
-              onClick={() => nav('/reconciliations/new?type=trade')}
-
-            >
-
-              <div className="flex items-start justify-between gap-3">
-
-                <div>
-
-                  <div className="text-sm font-semibold text-slate-100">New Trade reconciliation</div>
-
-                  <div className="mt-1 text-xs text-shellSub">
-
-                    {typeEnabled('trade') ? 'Upload trade files and build.' : 'Template not available yet.'}
-
-                  </div>
-
-                </div>
-
-                <ArrowUpRight size={18} className="text-white" />
-
-              </div>
-
-            </button>
-
-            <button
-
-              type="button"
-
-              className="rounded-[22px] border border-white/6 bg-[linear-gradient(180deg,rgba(38,35,86,0.95),rgba(217,70,239,0.88))] px-4 py-4 text-left shadow-[0_16px_30px_rgba(217,70,239,0.16)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
-
-              onClick={() => nav('/reconciliations/new?type=position')}
-
-            >
-
-              <div className="flex items-start justify-between gap-3">
-
-                <div>
-
-                  <div className="text-sm font-semibold text-slate-100">New Position reconciliation</div>
-
-                  <div className="mt-1 text-xs text-shellSub">Holdings/positions comparison.</div>
-
-                </div>
-
-                <ArrowUpRight size={18} className="text-white" />
-
-              </div>
-
-            </button>
-
-            <button
-
-              type="button"
-
-              disabled={!typeEnabled('fi')}
-
-              className={[
-
-                'rounded-[22px] border px-4 py-4 text-left transition duration-200',
-
-                typeEnabled('fi')
-
-                  ? 'border-white/6 bg-[linear-gradient(180deg,rgba(48,37,76,0.95),rgba(126,34,206,0.92))] shadow-[0_16px_30px_rgba(147,51,234,0.16)] hover:-translate-y-0.5 hover:brightness-110'
-
-                  : 'cursor-not-allowed border-white/4 bg-black/20 opacity-60',
-
-              ].join(' ')}
-
-              onClick={() => nav('/reconciliations/new?type=fi')}
-
-            >
-
-              <div className="flex items-start justify-between gap-3">
-
-                <div>
-
-                  <div className="text-sm font-semibold text-slate-100">New FI reconciliation</div>
-
-                  <div className="mt-1 text-xs text-shellSub">
-
-                    {typeEnabled('fi') ? 'Fixed income workflow.' : 'Template not available yet.'}
-
-                  </div>
-
-                </div>
-
-                <ArrowUpRight size={18} className="text-white" />
-
-              </div>
-
-            </button>
-
+        <Card
+          title="Today's reconciliations"
+          subtitle="Brokers, accounts, and rec status for today (rec date)."
+          right={<Badge variant="info">{jurisdiction}</Badge>}
+        >
+          <div className="max-h-52 overflow-auto rounded-xl border border-slate-800/70 bg-slate-950/20">
+            <table className="min-w-full text-left text-sm">
+              <thead className="sticky top-0 bg-slate-950/90 backdrop-blur">
+                <tr className="text-xs font-semibold text-slate-400">
+                  <th className="px-3 py-2">Broker</th>
+                  <th className="px-3 py-2">Account</th>
+                  <th className="px-3 py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td className="px-3 py-3 text-shellSub" colSpan={3}>
+                      Loading…
+                    </td>
+                  </tr>
+                ) : brokerOverview.length === 0 ? (
+                  <tr>
+                    <td className="px-3 py-4 text-shellSub" colSpan={3}>
+                      No brokers configured for this jurisdiction.
+                    </td>
+                  </tr>
+                ) : (
+                  brokerOverview.map((row, idx) => (
+                    <tr
+                      key={`${row.brokerId}-${row.accountId || idx}`}
+                      className={[
+                        'border-t border-slate-800/70 text-slate-200',
+                        row.recon ? 'cursor-pointer hover:bg-slate-800/25' : '',
+                      ].join(' ')}
+                      onClick={() => {
+                        if (row.recon) nav(reconTargetPath(row.recon))
+                      }}
+                    >
+                      <td className="px-3 py-2 font-medium text-slate-100">{row.brokerName}</td>
+                      <td className="px-3 py-2 text-shellSub">
+                        {row.accountName}
+                        {row.accountNumber ? ` (${row.accountNumber})` : ''}
+                      </td>
+                      <td className="px-3 py-2">
+                        {reconStatusBadge(row.recon?.status ?? 'none')}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-
         </Card>
-        ) : null}
 
       </div>
 

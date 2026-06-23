@@ -78,11 +78,15 @@ export type ReconciliationListItem = {
   performerName?: string | null
   reviewerId?: string | null
   reviewerName?: string | null
+  brokerId?: string | null
+  accountId?: string | null
   brokerName?: string | null
   accountName?: string | null
   declineReason?: string | null
   createdAt: string | null
   updatedAt: string | null
+  reviewedAt?: string | null
+  breakCount?: number
   ourFileName?: string
   cpFileName?: string
   name?: string | null
@@ -263,6 +267,14 @@ export type BreakCommentHistoryItem = {
   archivedReason?: string | null
 }
 
+export type BreakCommentEntry = {
+  break?: BreakCommentPayload
+  comment?: string
+  history?: BreakCommentHistoryItem[]
+  breakAgeDays?: number
+  breakStartedAt?: string
+}
+
 export type NotificationItem = {
   id: string
   type: string
@@ -303,7 +315,7 @@ export async function saveReconComment(
 
 export async function listReconciliations(
   limit = 20,
-  opts?: { scope?: 'jurisdiction' | 'drafts'; status?: string; days?: number },
+  opts?: { scope?: 'jurisdiction' | 'drafts' | 'today'; status?: string; days?: number },
 ) {
   const qs = new URLSearchParams({ limit: String(limit) })
   if (opts?.scope) qs.set('scope', opts.scope)
@@ -314,6 +326,10 @@ export async function listReconciliations(
 
 export async function listDashboardReviewed(limit = 100, days?: number) {
   return listReconciliations(limit, { scope: 'jurisdiction', status: 'reviewed', days })
+}
+
+export async function listTodayReconciliations(limit = 300) {
+  return listReconciliations(limit, { scope: 'today' })
 }
 
 export async function listMyCompleted(limit = 50) {
@@ -338,6 +354,13 @@ export async function getReconciliation(reconId: string) {
 
 export async function listMyDrafts(limit = 50) {
   return listReconciliations(limit, { scope: 'drafts' })
+}
+
+export async function searchReconciliations(q: string, limit = 20) {
+  const qs = new URLSearchParams({ q: q.trim(), limit: String(limit) })
+  return apiFetch(`/api/reconciliations/search?${qs.toString()}`) as Promise<{
+    items: ReconciliationListItem[]
+  }>
 }
 
 export async function deleteReconciliation(reconId: string) {
@@ -443,5 +466,9 @@ export async function createAccount(brokerId: string, name: string, number?: str
     method: 'POST',
     body: JSON.stringify({ name, number }),
   }) as Promise<{ account: Account }>
+}
+
+export async function deleteAccount(brokerId: string, accountId: string) {
+  return apiFetch(`/api/brokers/${brokerId}/accounts/${accountId}`, { method: 'DELETE' }) as Promise<{ ok: boolean }>
 }
 

@@ -6,7 +6,7 @@ import { Field } from '../../components/Field'
 import { Input } from '../../components/Input'
 import { PageHeader } from '../../components/PageHeader'
 import { Select } from '../../components/Select'
-import { createAccount, createBroker, deleteBroker, listAccounts, listBrokerTemplates, listBrokers, me, type Account, type Broker } from '../../lib/api'
+import { createAccount, createBroker, deleteAccount, deleteBroker, listAccounts, listBrokerTemplates, listBrokers, me, type Account, type Broker } from '../../lib/api'
 import { brokerSupportedReconTypes } from '../../lib/brokers'
 import type { Jurisdiction } from '../../lib/auth'
 
@@ -29,6 +29,7 @@ export function BrokersAdminPage() {
   const [accountName, setAccountName] = useState('')
   const [accountNumber, setAccountNumber] = useState('')
   const [deletingBrokerId, setDeletingBrokerId] = useState<string | null>(null)
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null)
 
   async function refreshBrokers() {
     const res = await listBrokers()
@@ -62,6 +63,27 @@ export function BrokersAdminPage() {
       setError(e instanceof Error ? e.message : 'Failed to delete broker')
     } finally {
       setDeletingBrokerId(null)
+    }
+  }
+
+  async function removeAccount(broker: Broker, account: Account) {
+    const label = account.number ? `${account.name} (${account.number})` : account.name
+    if (
+      !window.confirm(
+        `Delete account "${label}" under ${broker.name}? All reconciliations, results, comments, break history, and uploaded files for this account will be permanently removed. This cannot be undone.`,
+      )
+    )
+      return
+
+    setDeletingAccountId(account.id)
+    setError(null)
+    try {
+      await deleteAccount(broker.id, account.id)
+      await refreshBrokers()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete account')
+    } finally {
+      setDeletingAccountId(null)
     }
   }
 
@@ -271,14 +293,28 @@ export function BrokersAdminPage() {
                   </Button>
                 </div>
                 <div className="mt-2 text-sm text-shellSub">
-                  {(accountsByBroker[b.id] ?? []).length === 0
-                    ? 'No accounts yet'
-                    : (accountsByBroker[b.id] ?? []).map((a) => (
-                        <div key={a.id}>
-                          {a.name}
-                          {a.number ? ` (${a.number})` : ''}
+                  {(accountsByBroker[b.id] ?? []).length === 0 ? (
+                    'No accounts yet'
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {(accountsByBroker[b.id] ?? []).map((a) => (
+                        <div key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/6 bg-black/15 px-3 py-2">
+                          <div>
+                            {a.name}
+                            {a.number ? ` (${a.number})` : ''}
+                          </div>
+                          <Button
+                            variant="danger"
+                            type="button"
+                            disabled={saving || deletingAccountId === a.id}
+                            onClick={() => removeAccount(b, a)}
+                          >
+                            {deletingAccountId === a.id ? 'Deleting…' : 'Delete'}
+                          </Button>
                         </div>
                       ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

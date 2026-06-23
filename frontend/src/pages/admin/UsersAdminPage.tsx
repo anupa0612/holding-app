@@ -209,10 +209,15 @@ export function UsersAdminPage() {
               <option value="Operations">Operations</option>
             </Select>
           </Field>
-          <Field label="Jurisdictions" required hint="Select one or more jurisdictions for this user.">
+          <Field
+            label="Jurisdictions"
+            required
+            hint="ALL means the user may sign in to any region portal. Otherwise pick one or more regions."
+          >
             <div className="flex flex-wrap gap-2">
               {JURIS.map((j) => {
                 const active = jurisdictions.includes(j)
+                const label = j === 'ALL' ? 'ALL (any region)' : j
                 return (
                   <button
                     key={j}
@@ -225,7 +230,7 @@ export function UsersAdminPage() {
                         : 'border-white/10 bg-black/20 text-shellSub hover:bg-white/5 hover:text-slate-100',
                     ].join(' ')}
                   >
-                    {j}
+                    {label}
                   </button>
                 )
               })}
@@ -433,10 +438,15 @@ export function UsersAdminPage() {
               <option value="Operations">Operations</option>
             </Select>
           </Field>
-          <Field label="Jurisdictions" required>
+          <Field
+            label="Jurisdictions"
+            required
+            hint="ALL means the user may sign in to any region portal. Otherwise pick one or more regions."
+          >
             <div className="flex flex-wrap gap-2">
               {JURIS.map((j) => {
                 const active = editJurisdictions.includes(j)
+                const label = j === 'ALL' ? 'ALL (any region)' : j
                 return (
                   <button
                     key={j}
@@ -449,7 +459,7 @@ export function UsersAdminPage() {
                         : 'border-white/10 bg-black/20 text-shellSub hover:bg-white/5 hover:text-slate-100',
                     ].join(' ')}
                   >
-                    {j}
+                    {label}
                   </button>
                 )
               })}

@@ -7,13 +7,13 @@ import { Card } from '../components/Card'
 import { Input } from '../components/Input'
 import { Select } from '../components/Select'
 import { clearMeCache, login } from '../lib/api'
-import { getJurisdiction, setAccessToken, setJurisdiction, type Jurisdiction } from '../lib/auth'
+import { getLoginJurisdiction, setAccessToken, setJurisdiction, PORTAL_JURISDICTIONS, type PortalJurisdiction } from '../lib/auth'
 
 export function LoginPage() {
   const nav = useNavigate()
   const [email, setEmail] = useState('admin@local')
   const [password, setPassword] = useState('admin1234')
-  const [jurisdiction, setJuris] = useState<Jurisdiction>(getJurisdiction() ?? 'EU')
+  const [jurisdiction, setJuris] = useState<PortalJurisdiction>(getLoginJurisdiction())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -53,7 +53,7 @@ export function LoginPage() {
                 clearMeCache()
                 const res = await login(email, password, jurisdiction)
                 setAccessToken(res.accessToken)
-                setJurisdiction((res.user.jurisdiction as Jurisdiction) ?? jurisdiction)
+                setJurisdiction((res.user.jurisdiction as PortalJurisdiction) ?? jurisdiction)
                 nav('/', { replace: true })
               } catch (err) {
                 setError(err instanceof Error ? err.message : 'Login failed')
@@ -72,14 +72,17 @@ export function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </Field>
-            <Field label="Jurisdiction" required hint="Select the region you want to work in.">
-              <Select value={jurisdiction} onChange={(e) => setJuris(e.target.value as Jurisdiction)}>
-                <option value="ALL">ALL</option>
-                <option value="EU">EU</option>
-                <option value="US">US</option>
-                <option value="ME">ME</option>
-                <option value="ASIA">ASIA</option>
-                <option value="HK">HK</option>
+            <Field
+              label="Jurisdiction"
+              required
+              hint="Choose which region portal to work in (EU, US, ME, ASIA, or HK)."
+            >
+              <Select value={jurisdiction} onChange={(e) => setJuris(e.target.value as PortalJurisdiction)}>
+                {PORTAL_JURISDICTIONS.map((j) => (
+                  <option key={j} value={j}>
+                    {j}
+                  </option>
+                ))}
               </Select>
             </Field>
 

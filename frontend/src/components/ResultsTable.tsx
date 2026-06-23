@@ -345,7 +345,10 @@ export function ResultsTable({
               <th className="px-3 py-3 text-right border-b-2 border-slate-700/80">Broker Settled Quantity</th>
               <th className="px-3 py-3 text-right border-b-2 border-slate-700/80">Difference</th>
               {mode === 'breaks' ? (
-                <th className="px-3 py-3 border-b-2 border-slate-700/80">Break Type</th>
+                <>
+                  <th className="px-3 py-3 text-right border-b-2 border-slate-700/80">Age (days)</th>
+                  <th className="px-3 py-3 border-b-2 border-slate-700/80">Break Type</th>
+                </>
               ) : null}
               <th className="px-3 py-3 border-b-2 border-slate-700/80">Comments</th>
             </tr>
@@ -374,6 +377,10 @@ export function ResultsTable({
               commentValue && typeof commentValue === 'object' && commentValue.break
                 ? String(commentValue.break.breakType ?? '')
                 : ''
+            const breakAgeDays =
+              commentValue && typeof commentValue === 'object' && typeof commentValue.breakAgeDays === 'number'
+                ? commentValue.breakAgeDays
+                : null
             const history: BreakCommentHistoryItem[] =
               commentValue && typeof commentValue === 'object' && Array.isArray(commentValue.history)
                 ? commentValue.history
@@ -461,12 +468,26 @@ export function ResultsTable({
                 ) : null}
                 {mode === 'breaks' ? (
                   groupFirst ? (
-                    <td
-                      rowSpan={span}
-                      className="px-3 py-2 text-slate-200 whitespace-nowrap align-middle text-center border-r border-slate-800/60"
-                    >
-                      {breakTypeText ? breakTypeText : <span className="text-slate-500">—</span>}
-                    </td>
+                    <>
+                      <td
+                        rowSpan={span}
+                        className="px-3 py-2 text-slate-200 whitespace-nowrap align-middle text-center border-r border-slate-800/60"
+                      >
+                        {breakAgeDays !== null ? (
+                          <span title={commentValue?.breakStartedAt ? `Since ${formatDateMDY(commentValue.breakStartedAt)}` : undefined}>
+                            {breakAgeDays}
+                          </span>
+                        ) : (
+                          <span className="text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td
+                        rowSpan={span}
+                        className="px-3 py-2 text-slate-200 whitespace-nowrap align-middle text-center border-r border-slate-800/60"
+                      >
+                        {breakTypeText ? breakTypeText : <span className="text-slate-500">—</span>}
+                      </td>
+                    </>
                   ) : null
                 ) : null}
                 <td className="px-3 py-2">
@@ -693,6 +714,8 @@ export function ResultsTable({
         {(() => {
           const value = viewKey ? comments[viewKey] : null
           const breakInfo = value && typeof value === 'object' ? value.break : null
+          const breakAgeDays =
+            value && typeof value === 'object' && typeof value.breakAgeDays === 'number' ? value.breakAgeDays : null
           const history: BreakCommentHistoryItem[] =
             value && typeof value === 'object' && Array.isArray(value.history) ? value.history : []
           return (
@@ -709,6 +732,16 @@ export function ResultsTable({
                 </Field>
                 <Field label="Query Raised Date">
                   <Input value={breakInfo?.queryRaisedDate ? formatDateMDY(breakInfo.queryRaisedDate) : ''} disabled />
+                </Field>
+                <Field
+                  label="Age (days)"
+                  hint={
+                    value && typeof value === 'object' && value.breakStartedAt
+                      ? `Since ${formatDateMDY(value.breakStartedAt)}`
+                      : undefined
+                  }
+                >
+                  <Input value={breakAgeDays !== null ? String(breakAgeDays) : ''} disabled placeholder="—" />
                 </Field>
                 <Field label="Commented person">
                   <Input value={history.length > 0 ? usernameOnly(history[history.length - 1]?.updatedByName) : ''} disabled />

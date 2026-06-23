@@ -95,7 +95,8 @@ export function NewReconTypePage() {
         const res = await listAccounts(brokerId)
         if (cancelled) return
         setAccounts(res.items)
-        setAccountId(res.items[0]?.id ?? '')
+        setAccountId('')
+        setCreatingAccount(res.items.length === 0)
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load accounts')
       }
@@ -238,7 +239,9 @@ export function NewReconTypePage() {
             hint={accounts.length === 0 ? 'No accounts under this broker. Create one below.' : undefined}
           >
             <Select value={accountId} onChange={(e) => setAccountId(e.target.value)} disabled={!brokerId}>
-              {accounts.length === 0 ? <option value="">No accounts</option> : null}
+              <option value="">
+                {accounts.length === 0 ? 'Create an account to continue' : 'Select account…'}
+              </option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}{a.number ? ` (${a.number})` : ''}
@@ -311,7 +314,7 @@ export function NewReconTypePage() {
 
         <div className="mt-5 flex items-center justify-end">
           <Button
-            disabled={busy || !brokerId || !accountId || !valueDate || !reviewerId || !typeSupported}
+            disabled={busy || !brokerId || !accountId || !valueDate || !reviewerId || !typeSupported || accounts.length === 0}
             onClick={async () => {
               setBusy(true)
               setError(null)
